@@ -7,8 +7,11 @@ LAMAC=../src/lamac
 check: $(TESTS)
 
 $(TESTS): %: %.lama
-	@echo $@
-	LAMA=../runtime $(LAMAC)  $< && `which time` -f "$@\t%U" ./$@
+	LAMA=../runtime 
+	@echo "recursive: " && `which time` -f "$@\t%U" $(LAMAC) -s $^ < input
+	@echo "byterun: " && \
+		$(LAMAC) -b $^ && \
+	 	`which time` -f "$@\t%U" ../byterun/interpreter $@.bc < input
 
 clean:
-	$(RM) test*.log *.s *~ $(TESTS) *.i
+	$(RM) test*.log *.s *.bc *~ $(TESTS) *.i

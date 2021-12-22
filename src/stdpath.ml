@@ -1,1 +1,1 @@
-let path = "/home/db/.opam/lama/share/Lama"
+let path = "/home/evgeniy/.opam/lamavm3/share/Lama"

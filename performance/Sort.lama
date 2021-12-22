@@ -2,7 +2,7 @@ fun bubbleSort (l) {
   fun inner (l) {
     case l of
       x : z@(y : tl) ->
-       if compare (x, y) > 0
+       if x > y
        then [true, y : inner (x : tl) [1]]
        else case inner (z) of [f, z] -> [f, x : z] esac
        fi
