@@ -67,7 +67,6 @@ enum Cls2 {
     ARRAY = 8
 };
 
-
 enum Patt {
     PATT_STR = 0,
     PATT_STR_TAG = 1,
@@ -923,11 +922,9 @@ void eval(FILE* f, bytefile* bf) {
 #ifdef DEBUG
                 fprintf(f, "CALL\tLstring");
 #endif 
-                // FAIL;
-                // TODO: check
-                // int obj = stack_pop(stack);
-                // int str = Lstring(obj);
-                // stack_push(stack, str);
+                int obj = stack_pop();
+                int str = Lstring(obj);
+                stack_push(str);
                 break;
             }
 
