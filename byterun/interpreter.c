@@ -67,6 +67,7 @@
 # define CLOSURE_TAG 0x00000007
 
 # define TO_DATA(x) ((data*)((char*)(x)-sizeof(int)))
+# define LEN(x) ((x & 0xFFFFFFF8) >> 3)
 
 # define UNBOXED(x)  (((int) (x)) &  0x0001)
 # define UNBOX(x)    (((int) (x)) >> 1)
@@ -179,7 +180,7 @@ typedef struct Function {
 void freeFunction(Function_t* f) {
     free(f->state->args);
     free(f->state->locals);
-    free(f->state->access);
+    // free(f->state->access);
     free(f->state);
     free(f);
 }
@@ -366,7 +367,6 @@ void eval(FILE* f, bytefile* bf) {
     curFunction->callerFunction = NULL;
     int lastCall = CALL;
     // int* curClosure;
-    int nClosure = 0;
 
     Stack_t* stack = stack_create();
 
@@ -578,20 +578,20 @@ void eval(FILE* f, bytefile* bf) {
             int index = INT;
             int value = *lookup(bf, curFunction->state, l, index);
 #ifdef DEBUG
-            fprintf(f, " DEBUG: value is %d", value);
+            fprintf(f, " DEBUG: value is %d", UNBOX(value));
 #endif
             stack_push(stack, value);
             break;
         }
 
         case LDA: {
-#ifdef DEBUG:
+#ifdef DEBUG
             fprintf(f, "%s\t", "LDA");
 #endif
             int index = INT;
             int value = lookup(bf, curFunction->state, l, index);
 #ifdef DEBUG
-            fprintf(f, " DEBUG: value is %d", value);
+            fprintf(f, " DEBUG: value is %d", UNBOX(value));
 #endif
             stack_push(stack, value);
             stack_push(stack, value);
@@ -699,7 +699,6 @@ void eval(FILE* f, bytefile* bf) {
                 }
 
                 stack_push(stack, BcreateClosure(BOX(nargs), (void*)address, args));
-                nClosure = nargs;
                 break;
             }
 
@@ -716,27 +715,27 @@ void eval(FILE* f, bytefile* bf) {
 
                 data* closure = TO_DATA(stack_pop(stack));
                 int label = *(int*)closure->contents;
-                // printf(" nClosure my: %d", sizeof(closure->contents));
-                // int nClosure = stack_pop(stack);
+                // fprintf(f, " label goto %.8x\n", label);
+                int nClosure = LEN(closure->tag) - 1;
 
-                // fprintf(f, " nClosure: %d\n", nClosure);
-
-                // for (int i = 0; i < nargs; i++) {
-                //     stack_push(stack, args[i]);
-                // }
+                // fprintf(f, " nClosure LEN: %d", nClosure);
 
                 int* cnts = (int*)(closure->contents + sizeof(int));
 
                 Function_t* newFunction = (Function_t*)malloc(sizeof(Function_t));
                 newFunction->callerFunction = curFunction;
                 newFunction->state = (State_t*)malloc(sizeof(State_t));
-                newFunction->state->access = (int*)malloc(nClosure * sizeof(int));
+
+                // newFunction->state->access = (int*)malloc(nClosure * sizeof(int));
+
+                newFunction->state->access = cnts;
+
                 newFunction->state->args = (int*)malloc(nargs * sizeof(int));
 
-                for (int i = 0; i < nClosure; i++) {
-                    // fprintf(f, "\n C[%d] = %d", i, UNBOX(cnts[i]));
-                    newFunction->state->access[i] = cnts[i];
-                }
+                // for (int i = 0; i < nClosure; i++) {
+                //     fprintf(f, "\n C[%d] = %d", i, UNBOX(cnts[i]));
+                //     newFunction->state->access[i] = cnts[i];
+                // }
 
                 for (int i = 0; i < nargs; i++) {
                     // fprintf(f, "\n A[%d] = %d", i, UNBOX(args[i]));
@@ -893,7 +892,7 @@ void eval(FILE* f, bytefile* bf) {
 #ifdef DEBUG
                 fprintf(f, "CALL\tLstring");
 #endif 
-                FAIL;
+                // FAIL;
                 // TODO: check
                 // int obj = stack_pop(stack);
                 // int str = Lstring(obj);
