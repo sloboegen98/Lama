@@ -10,56 +10,81 @@
 
 /* SM instructions */
 
-# define BINOP   0
+enum Operation
+{
+    OpAdd = 0,
+    OpSub = 1,
+    OpMul = 2,
+    OpDiv = 3,
+    OpMod = 4,
+    OpLt = 5,
+    OpLeq = 6,
+    OpGt = 7,
+    OpGeq = 8,
+    OpEq = 9,
+    OpNeq = 10,
+    OpAnd = 11,
+    OpOr = 12
+};
 
-# define CONST   0
-# define STR     1
-# define SEXP    2
-# define STA     4
-# define JMP     5
-# define END     6
-# define DROP    8
-# define DUP     9
-# define ELEM    11
+enum Cls1 {
+    CONST = 0,
+    STR = 1,
+    SEXP = 2,
+    STI = 3,
+    STA = 4,
+    JMP = 5,
+    END = 6,
+    RET = 7,
+    DROP = 8,
+    DUP = 9,
+    SWAP = 10,
+    ELEM = 11
+};
 
-# define LD      2
-# define LDA     3
-# define ST      4
+enum LDS {
+    LD = 2,
+    LDA = 3,
+    ST = 4
+};
+
+enum LocType {
+    Global = 0,
+    Local = 1,
+    Arg = 2,
+    Access = 3
+};
+
+enum Cls2 {
+    CJMPz = 0,
+    CJMPnz = 1,
+    BEGIN = 2,
+    CBEGIN = 3,
+    CLOSURE = 4,
+    CALLC = 5,
+    CALL = 6,
+    TAG = 7,
+    ARRAY = 8
+};
 
 
-# define Global  0
-# define Local   1
-# define Arg     2
-# define Access  3
+enum Patt {
+    PATT_STR = 0,
+    PATT_STR_TAG = 1,
+    PATT_ARRAY = 2,
+    PATT_SEXP = 3,
+    PATT_BOX = 4,
+    PATT_UNBOX = 5,
+    PATT_FUN = 6
+};
 
-# define CJMPz   0
-# define CJMPnz  1
-# define BEGIN   2
-# define CBEGIN  3
-# define CLOSURE 4
-# define CALLC   5
-# define CALL    6
-# define TAG     7
-# define ARRAY   8
-
-# define PATT         6
-# define PATT_STR     0
-# define PATT_STR_TAG 1
-# define PATT_ARRAY   2
-# define PATT_SEXP    3
-# define PATT_BOX     4
-# define PATT_UNBOX   5
-# define PATT_FUN     6
-
-# define LINE    10
-
-# define BUILTIN 7
-# define LREAD   0
-# define LWRITE  1
-# define LLENGTH 2
-# define LSTRING 3
-# define BARRAY  4
-
+enum Builtin {
+    LREAD = 0,
+    LWRITE = 1,
+    LLENGTH = 2,
+    LSTRING = 3,
+    BARRAY = 4
+};
 
 # define STRING_TAG  0x00000001
 # define ARRAY_TAG   0x00000003
@@ -397,71 +422,98 @@ void eval(FILE* f, bytefile* bf) {
         case 15:
             goto stop;
 
-        case BINOP: {
+        case 0: {
 #ifdef DEBUG
             fprintf(f, "BINOP\t%s", ops[l - 1]);
 #endif
 
-            char* op = ops[l - 1];
+            int op = l - 1;
             int rhs = UNBOX(stack_pop());
             int lhs = UNBOX(stack_pop());
 
-            if (strcmp(op, "+") == 0) {
+            switch (op) {
+            case OpAdd: {
                 int result = BOX(lhs + rhs);
                 stack_push(result);
-            }
-            else if (strcmp(op, "-") == 0) {
-                int result = BOX(lhs - rhs);
-                stack_push(result);
-            }
-            else if (strcmp(op, "*") == 0) {
-                int result = BOX(lhs * rhs);
-                stack_push(result);
-            }
-            else if (strcmp(op, "/") == 0) {
-                int result = BOX(lhs / rhs);
-                stack_push(result);
-            }
-            else if (strcmp(op, "%") == 0) {
-                int result = BOX(lhs % rhs);
-                stack_push(result);
-            }
-            else if (strcmp(op, "<") == 0) {
-                int result = BOX(lhs < rhs ? 1 : 0);
-                stack_push(result);
-            }
-            else if (strcmp(op, "<=") == 0) {
-                int result = BOX(lhs <= rhs ? 1 : 0);
-                stack_push(result);
-            }
-            else if (strcmp(op, ">") == 0) {
-                int result = BOX(lhs > rhs ? 1 : 0);
-                stack_push(result);
-            }
-            else if (strcmp(op, ">=") == 0) {
-                int result = BOX(lhs >= rhs ? 1 : 0);
-                stack_push(result);
-            }
-            else if (strcmp(op, "==") == 0) {
-                int result = BOX(lhs == rhs ? 1 : 0);
-                stack_push(result);
-            }
-            else if (strcmp(op, "!=") == 0) {
-                int result = BOX(lhs != rhs ? 1 : 0);
-                stack_push(result);
-            }
-            else if (strcmp(op, "&&") == 0) {
-                int result = BOX(lhs && rhs);
-                stack_push(result);
-            }
-            else if (strcmp(op, "!!") == 0) {
-                int result = BOX(lhs || rhs);
-                stack_push(result);
-            }
-            else {
-                FAIL;
+                break;
             }
 
+            case OpSub: {
+                int result = BOX(lhs - rhs);
+                stack_push(result);
+                break;
+            }
+
+            case OpMul: {
+                int result = BOX(lhs * rhs);
+                stack_push(result);
+                break;
+            }
+
+            case OpDiv: {
+                int result = BOX(lhs / rhs);
+                stack_push(result);
+                break;
+            }
+
+            case OpMod: {
+                int result = BOX(lhs % rhs);
+                stack_push(result);
+                break;
+            }
+
+            case OpLt: {
+                int result = BOX(lhs < rhs ? 1 : 0);
+                stack_push(result);
+                break;
+            }
+
+            case OpLeq: {
+                int result = BOX(lhs <= rhs ? 1 : 0);
+                stack_push(result);
+                break;
+            }
+
+            case OpGt: {
+                int result = BOX(lhs > rhs ? 1 : 0);
+                stack_push(result);
+                break;
+            }
+
+            case OpGeq: {
+                int result = BOX(lhs >= rhs ? 1 : 0);
+                stack_push(result);
+                break;
+            }
+
+            case OpEq: {
+                int result = BOX(lhs == rhs ? 1 : 0);
+                stack_push(result);
+                break;
+            }
+
+            case OpNeq: {
+                int result = BOX(lhs != rhs ? 1 : 0);
+                stack_push(result);
+                break;
+            }
+
+            case OpAnd: {
+                int result = BOX(lhs && rhs);
+                stack_push(result);
+                break;
+            }
+
+            case OpOr: {
+                int result = BOX(lhs || rhs);
+                stack_push(result);
+                break;
+            }
+
+            default: {
+                FAIL;
+            }
+            }
             break;
         }
 
@@ -676,21 +728,7 @@ void eval(FILE* f, bytefile* bf) {
 #ifdef DEBUG
                 fprintf(f, "CBEGIN\t%d %d", nargs, nlocals);
 #endif
-
-                // curFunction->state = (State_t*)malloc(sizeof(State_t));
-            // curFunction->state->args = (int*)malloc(nargs * sizeof(int));
                 curFunction->state->locals = (int*)malloc(nlocals * sizeof(int));
-                // curFunction->state->access = (int*)malloc(nClosure * sizeof(int));
-
-            // for (int i = 0; i < nClosure; i++) {
-            //     curFunction->state->access[i] = curClosure[i];
-            // }
-
-            // for (int i = nargs - 1; i >= 0; i--) {
-            //     curFunction->state->args[i] = stack_pop(stack);
-            // }
-
-
                 break;
             }
 
@@ -724,30 +762,14 @@ void eval(FILE* f, bytefile* bf) {
 
                 data* closure = TO_DATA(stack_pop());
                 int label = *(int*)closure->contents;
-                // fprintf(f, " label goto %.8x\n", label);
-                int nClosure = LEN(closure->tag) - 1;
-
-                // fprintf(f, " nClosure LEN: %d", nClosure);
-
-                int* cnts = (int*)(closure->contents + sizeof(int));
 
                 Function_t* newFunction = (Function_t*)malloc(sizeof(Function_t));
                 newFunction->callerFunction = curFunction;
                 newFunction->state = (State_t*)malloc(sizeof(State_t));
-
-                // newFunction->state->access = (int*)malloc(nClosure * sizeof(int));
-
-                newFunction->state->access = cnts;
-
+                newFunction->state->access = (int*)(closure->contents + sizeof(int));
                 newFunction->state->args = (int*)malloc(nargs * sizeof(int));
 
-                // for (int i = 0; i < nClosure; i++) {
-                //     fprintf(f, "\n C[%d] = %d", i, UNBOX(cnts[i]));
-                //     newFunction->state->access[i] = cnts[i];
-                // }
-
                 for (int i = 0; i < nargs; i++) {
-                    // fprintf(f, "\n A[%d] = %d", i, UNBOX(args[i]));
                     newFunction->state->args[i] = args[i];
                 }
 
@@ -802,7 +824,7 @@ void eval(FILE* f, bytefile* bf) {
                 break;
             }
 
-            case LINE: {
+            case 10: {
                 int line = INT;
 #ifdef DEBUG
                 fprintf(f, "DEBUG: LINE\t%d", line);
@@ -815,7 +837,7 @@ void eval(FILE* f, bytefile* bf) {
             break;
         }
 
-        case PATT: {
+        case 6: {
 #ifdef DEBUG
             fprintf(f, "PATT\t%s", pats[l]);
 #endif
@@ -868,14 +890,14 @@ void eval(FILE* f, bytefile* bf) {
             break;
         }
 
-        case BUILTIN: {
+        case 7: {
             switch (l) {
             case LREAD: {
 #ifdef DEBUG
                 fprintf(f, "CALL\tLread");
 #endif
                 int value = Lread();
-                stack_push( value);
+                stack_push(value);
                 break;
             }
 
