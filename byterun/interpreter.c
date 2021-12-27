@@ -92,6 +92,8 @@ void* BcreateArray(int bn, int* args) {
     data* r;
     int     n = UNBOX(bn);
 
+    __pre_gc();
+
     // args + tag
     r = (data*)malloc(sizeof(int) * (n + 1));
 
@@ -100,6 +102,8 @@ void* BcreateArray(int bn, int* args) {
     for (i = 0; i < n; i++) {
         ((int*)r->contents)[i] = args[i];
     }
+
+    __post_gc();
 
     return r->contents;
 }
@@ -113,6 +117,8 @@ void* BcreateSexp(int bn, int* args) {
     sexp* r;
     data* d;
     int n = UNBOX(bn);
+
+    __pre_gc();
 
     // args + tag + hash
     r = (sexp*)malloc(sizeof(int) * (n + 2));
@@ -129,6 +135,8 @@ void* BcreateSexp(int bn, int* args) {
 
     r->tag = UNBOX(args[n]);
 
+    __post_gc();
+
     return d->contents;
 }
 
@@ -136,6 +144,8 @@ void* BcreateClosure(int bn, void* entry, int* args) {
     int     i, ai;
     data* r;
     int     n = UNBOX(bn);
+
+    __pre_gc();
 
     r = (data*)malloc(sizeof(int) * (n + 2));
 
@@ -148,6 +158,8 @@ void* BcreateClosure(int bn, void* entry, int* args) {
         ai = args[i];
         ((int*)r->contents)[i + 1] = ai;
     }
+
+    __post_gc();
 
     return r->contents;
 }
@@ -312,47 +324,43 @@ bytefile* read_file(char* fname) {
     return file;
 }
 
-const int STACK_CAPACITY = 10000;
-typedef struct {
-    int top;
-    int* buffer;
-} Stack_t;
+# define  STACK_CAPACITY 10000
+int buffer[STACK_CAPACITY];
+int top = -1;
 
+extern size_t __gc_stack_top;
+extern size_t __gc_stack_bottom;
 
-Stack_t* stack_create() {
-    Stack_t* stack = (Stack_t*)(malloc(sizeof(Stack_t)));
-    stack->top = -1;
-    stack->buffer = (int*)malloc(STACK_CAPACITY * sizeof(int));
-    return stack;
+int stack_isEmpty() {
+    return top == -1;
 }
 
-int stack_isEmpty(Stack_t* stack) {
-    return stack->top == -1;
+void stack_push(int v) {
+    buffer[++top] = v;
+    __gc_stack_top = buffer[top];
 }
 
-void stack_push(Stack_t* stack, int v) {
-    stack->buffer[++stack->top] = v;
-}
-
-int stack_pop(Stack_t* stack) {
-    if (stack_isEmpty(stack)) {
+int stack_pop() {
+    if (stack_isEmpty()) {
 
 # ifdef DEBUG
         printf(" ERROR: stack is empty");
 # endif
         return INT_MIN;
     }
-    return stack->buffer[stack->top--];
+
+    __gc_stack_top = buffer[top - 1];
+    return buffer[top--];
 }
 
-int stack_top(Stack_t* stack) {
-    if (stack_isEmpty(stack)) {
+int stack_top() {
+    if (stack_isEmpty()) {
 #ifdef DEBUG
         printf(" ERROR: stack is empty");
 #endif
         return INT_MIN;
     }
-    return stack->buffer[stack->top];
+    return buffer[top];
 }
 
 void eval(FILE* f, bytefile* bf) {
@@ -362,13 +370,14 @@ void eval(FILE* f, bytefile* bf) {
 # define STRING get_string (bf, INT)
 # define FAIL   failure (" ERROR: invalid opcode %d-%d\n", h, l)
 
+    __gc_init();
+    __gc_stack_bottom = &buffer[top];
     // main-function
     Function_t* curFunction = (Function_t*)malloc(sizeof(Function_t));
     curFunction->callerFunction = NULL;
     int lastCall = CALL;
-    // int* curClosure;
 
-    Stack_t* stack = stack_create();
+    // stack_create();
 
     char* ip = bf->code_ptr;
     char* ops[] = { "+", "-", "*", "/", "%", "<", "<=", ">", ">=", "==", "!=", "&&", "!!" };
@@ -394,60 +403,60 @@ void eval(FILE* f, bytefile* bf) {
 #endif
 
             char* op = ops[l - 1];
-            int rhs = UNBOX(stack_pop(stack));
-            int lhs = UNBOX(stack_pop(stack));
+            int rhs = UNBOX(stack_pop());
+            int lhs = UNBOX(stack_pop());
 
             if (strcmp(op, "+") == 0) {
                 int result = BOX(lhs + rhs);
-                stack_push(stack, result);
+                stack_push(result);
             }
             else if (strcmp(op, "-") == 0) {
                 int result = BOX(lhs - rhs);
-                stack_push(stack, result);
+                stack_push(result);
             }
             else if (strcmp(op, "*") == 0) {
                 int result = BOX(lhs * rhs);
-                stack_push(stack, result);
+                stack_push(result);
             }
             else if (strcmp(op, "/") == 0) {
                 int result = BOX(lhs / rhs);
-                stack_push(stack, result);
+                stack_push(result);
             }
             else if (strcmp(op, "%") == 0) {
                 int result = BOX(lhs % rhs);
-                stack_push(stack, result);
+                stack_push(result);
             }
             else if (strcmp(op, "<") == 0) {
                 int result = BOX(lhs < rhs ? 1 : 0);
-                stack_push(stack, result);
+                stack_push(result);
             }
             else if (strcmp(op, "<=") == 0) {
                 int result = BOX(lhs <= rhs ? 1 : 0);
-                stack_push(stack, result);
+                stack_push(result);
             }
             else if (strcmp(op, ">") == 0) {
                 int result = BOX(lhs > rhs ? 1 : 0);
-                stack_push(stack, result);
+                stack_push(result);
             }
             else if (strcmp(op, ">=") == 0) {
                 int result = BOX(lhs >= rhs ? 1 : 0);
-                stack_push(stack, result);
+                stack_push(result);
             }
             else if (strcmp(op, "==") == 0) {
                 int result = BOX(lhs == rhs ? 1 : 0);
-                stack_push(stack, result);
+                stack_push(result);
             }
             else if (strcmp(op, "!=") == 0) {
                 int result = BOX(lhs != rhs ? 1 : 0);
-                stack_push(stack, result);
+                stack_push(result);
             }
             else if (strcmp(op, "&&") == 0) {
                 int result = BOX(lhs && rhs);
-                stack_push(stack, result);
+                stack_push(result);
             }
             else if (strcmp(op, "!!") == 0) {
                 int result = BOX(lhs || rhs);
-                stack_push(stack, result);
+                stack_push(result);
             }
             else {
                 FAIL;
@@ -463,7 +472,7 @@ void eval(FILE* f, bytefile* bf) {
 #ifdef DEBUG
                 fprintf(f, "CONST\t%d", value);
 #endif
-                stack_push(stack, BOX(value));
+                stack_push(BOX(value));
                 break;
             }
 
@@ -473,7 +482,7 @@ void eval(FILE* f, bytefile* bf) {
                 fprintf(f, "STRING\t%s", str);
 #endif
                 int v = Bstring(str);
-                stack_push(stack, v);
+                stack_push(v);
 
                 break;
             }
@@ -488,11 +497,11 @@ void eval(FILE* f, bytefile* bf) {
                 int hash = LtagHash(name);
                 int* args = (int*)malloc((nargs + 1) * sizeof(int)); // args + hash
                 for (int i = nargs - 1; i >= 0; i--) {
-                    args[i] = stack_pop(stack);
+                    args[i] = stack_pop();
                 }
                 args[nargs] = hash;
                 int sexp = BcreateSexp(BOX(nargs), args);
-                stack_push(stack, sexp);
+                stack_push(sexp);
 
                 break;
             }
@@ -501,13 +510,13 @@ void eval(FILE* f, bytefile* bf) {
 #ifdef DEBUG
                 fprintf(f, "STA");
 #endif
-                int v = stack_pop(stack);
-                int index = stack_pop(stack);
-                int x = stack_pop(stack);
+                int v = stack_pop();
+                int index = stack_pop();
+                int x = stack_pop();
 
                 int vv = Bsta(v, index, x);
 
-                stack_push(stack, vv);
+                stack_push(vv);
 
                 break;
             }
@@ -541,7 +550,7 @@ void eval(FILE* f, bytefile* bf) {
 #ifdef DEBUG
                 fprintf(f, "DROP");
 #endif
-                stack_pop(stack);
+                stack_pop();
                 break;
             }
 
@@ -549,8 +558,8 @@ void eval(FILE* f, bytefile* bf) {
 #ifdef DEBUG
                 fprintf(f, "DUP");
 #endif
-                int dup = stack_top(stack);
-                stack_push(stack, dup);
+                int dup = stack_top();
+                stack_push(dup);
                 break;
             }
 
@@ -558,10 +567,10 @@ void eval(FILE* f, bytefile* bf) {
 #ifdef DEBUG
                 fprintf(f, "ELEM");
 #endif
-                int index = stack_pop(stack);
-                int s = stack_pop(stack);
+                int index = stack_pop();
+                int s = stack_pop();
                 int elem = Belem(s, index);
-                stack_push(stack, elem);
+                stack_push(elem);
                 break;
             }
 
@@ -580,7 +589,7 @@ void eval(FILE* f, bytefile* bf) {
 #ifdef DEBUG
             fprintf(f, " DEBUG: value is %d", UNBOX(value));
 #endif
-            stack_push(stack, value);
+            stack_push(value);
             break;
         }
 
@@ -593,8 +602,8 @@ void eval(FILE* f, bytefile* bf) {
 #ifdef DEBUG
             fprintf(f, " DEBUG: value is %d", UNBOX(value));
 #endif
-            stack_push(stack, value);
-            stack_push(stack, value);
+            stack_push(value);
+            stack_push(value);
             break;
         }
 
@@ -603,7 +612,7 @@ void eval(FILE* f, bytefile* bf) {
             fprintf(f, "%s\t", "ST");
 #endif
             int index = INT;
-            int value = stack_top(stack);
+            int value = stack_top();
             assign(bf, curFunction->state, l, index, value);
             break;
         }
@@ -617,7 +626,7 @@ void eval(FILE* f, bytefile* bf) {
                 fprintf(f, "CJMPz\t0x%.8x", label);
 #endif
 
-                int z = UNBOX(stack_pop(stack));
+                int z = UNBOX(stack_pop());
                 if (z == 0) {
                     ip = (char*)(bf->code_ptr + label);
                 }
@@ -629,7 +638,7 @@ void eval(FILE* f, bytefile* bf) {
 #ifdef DEBUG
                 fprintf(f, "CJMPnz\t0x%.8x", label);
 #endif
-                int z = UNBOX(stack_pop(stack));
+                int z = UNBOX(stack_pop());
                 if (z != 0) {
                     ip = (char*)(bf->code_ptr + label);
                 }
@@ -651,7 +660,7 @@ void eval(FILE* f, bytefile* bf) {
                     // not a `main`-function
                     if (curFunction->callerFunction != NULL) {
                         for (int i = nargs - 1; i >= 0; i--) {
-                            curFunction->state->args[i] = stack_pop(stack);
+                            curFunction->state->args[i] = stack_pop();
                         }
                     }
                 }
@@ -698,7 +707,7 @@ void eval(FILE* f, bytefile* bf) {
                     args[i] = *lookup(bf, curFunction->state, t, index);
                 }
 
-                stack_push(stack, BcreateClosure(BOX(nargs), (void*)address, args));
+                stack_push(BcreateClosure(BOX(nargs), (void*)address, args));
                 break;
             }
 
@@ -710,10 +719,10 @@ void eval(FILE* f, bytefile* bf) {
 
                 int* args = (int*)malloc(nargs * sizeof(int));
                 for (int i = nargs - 1; i >= 0; i--) {
-                    args[i] = stack_pop(stack);
+                    args[i] = stack_pop();
                 }
 
-                data* closure = TO_DATA(stack_pop(stack));
+                data* closure = TO_DATA(stack_pop());
                 int label = *(int*)closure->contents;
                 // fprintf(f, " label goto %.8x\n", label);
                 int nClosure = LEN(closure->tag) - 1;
@@ -776,9 +785,9 @@ void eval(FILE* f, bytefile* bf) {
                 fprintf(f, "%d", nargs);
 #endif
                 int hash = LtagHash(name);
-                int patt = stack_pop(stack);
+                int patt = stack_pop();
                 int matched = Btag(patt, hash, BOX(nargs));
-                stack_push(stack, matched);
+                stack_push(matched);
                 break;
             }
 
@@ -787,9 +796,9 @@ void eval(FILE* f, bytefile* bf) {
 #ifdef DEBUG
                 fprintf(f, "ARRAY\t%d", n);
 #endif
-                int patt = stack_pop(stack);
+                int patt = stack_pop();
                 int matched = Barray_patt(patt, BOX(n));
-                stack_push(stack, matched);
+                stack_push(matched);
                 break;
             }
 
@@ -813,45 +822,45 @@ void eval(FILE* f, bytefile* bf) {
 
             switch (l) {
             case PATT_STR: {
-                void* x = (void*)stack_pop(stack);
-                void* y = (void*)stack_pop(stack);
-                stack_push(stack, Bstring_patt(x, y));
+                void* x = (void*)stack_pop();
+                void* y = (void*)stack_pop();
+                stack_push(Bstring_patt(x, y));
                 break;
             }
 
             case PATT_STR_TAG: {
-                void* x = (void*)stack_pop(stack);
-                stack_push(stack, Bstring_tag_patt(x));
+                void* x = (void*)stack_pop();
+                stack_push(Bstring_tag_patt(x));
                 break;
             }
 
             case PATT_ARRAY: {
-                void* x = (void*)stack_pop(stack);
-                stack_push(stack, Barray_tag_patt(x));
+                void* x = (void*)stack_pop();
+                stack_push(Barray_tag_patt(x));
                 break;
             }
 
             case PATT_SEXP: {
-                void* x = (void*)stack_pop(stack);
-                stack_push(stack, Bsexp_tag_patt(x));
+                void* x = (void*)stack_pop();
+                stack_push(Bsexp_tag_patt(x));
                 break;
             }
 
             case PATT_BOX: {
-                void* x = (void*)stack_pop(stack);
-                stack_push(stack, Bboxed_patt(x));
+                void* x = (void*)stack_pop();
+                stack_push(Bboxed_patt(x));
                 break;
             }
 
             case PATT_UNBOX: {
-                void* x = (void*)stack_pop(stack);
-                stack_push(stack, Bunboxed_patt(x));
+                void* x = (void*)stack_pop();
+                stack_push(Bunboxed_patt(x));
                 break;
             }
 
             case PATT_FUN: {
-                void* x = (void*)stack_pop(stack);
-                stack_push(stack, Bclosure_tag_patt(x));
+                void* x = (void*)stack_pop();
+                stack_push(Bclosure_tag_patt(x));
                 break;
             }
             }
@@ -866,7 +875,7 @@ void eval(FILE* f, bytefile* bf) {
                 fprintf(f, "CALL\tLread");
 #endif
                 int value = Lread();
-                stack_push(stack, value);
+                stack_push( value);
                 break;
             }
 
@@ -874,8 +883,8 @@ void eval(FILE* f, bytefile* bf) {
 #ifdef DEBUG
                 fprintf(f, "CALL\tLwrite\n");
 #endif
-                int value = stack_pop(stack);
-                stack_push(stack, Lwrite(value));
+                int value = stack_pop();
+                stack_push(Lwrite(value));
                 break;
             }
 
@@ -883,9 +892,9 @@ void eval(FILE* f, bytefile* bf) {
 #ifdef DEBUG
                 fprintf(f, "CALL\tLlength");
 #endif          
-                int s = stack_pop(stack);
+                int s = stack_pop();
                 int len = Llength(s);
-                stack_push(stack, len);
+                stack_push(len);
                 break;
             }
             case LSTRING: {
@@ -907,10 +916,10 @@ void eval(FILE* f, bytefile* bf) {
 #endif
                 int* args = (int*)malloc(n * sizeof(int));
                 for (int i = n - 1; i >= 0; i--) {
-                    args[i] = stack_pop(stack);
+                    args[i] = stack_pop();
                 }
                 int arr = BcreateArray(BOX(n), args);
-                stack_push(stack, arr);
+                stack_push(arr);
                 break;
             }
 

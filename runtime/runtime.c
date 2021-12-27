@@ -4,7 +4,7 @@
 
 # include "runtime.h"
 
-// # define __ENABLE_GC__
+# define __ENABLE_GC__
 # ifndef __ENABLE_GC__
 # define alloc malloc
 # endif
