@@ -194,10 +194,10 @@ void disassemble (FILE *f, bytefile *bf) {
         {int n = INT;
          for (int i = 0; i<n; i++) {
          switch (BYTE) {
-           case 0: fprintf (f, "G(%d)", INT); break;
-           case 1: fprintf (f, "L(%d)", INT); break;
-           case 2: fprintf (f, "A(%d)", INT); break;
-           case 3: fprintf (f, "C(%d)", INT); break;
+           case 0: fprintf (f, " G(%d)", INT); break;
+           case 1: fprintf (f, " L(%d)", INT); break;
+           case 2: fprintf (f, " A(%d)", INT); break;
+           case 3: fprintf (f, " C(%d)", INT); break;
            default: FAIL;
          }
          }
