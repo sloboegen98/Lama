@@ -119,7 +119,7 @@ void* BcreateArray(int bn, int* args) {
     __pre_gc();
 
     // args + tag
-    r = (data*)malloc(sizeof(int) * (n + 1));
+    r = (data*)alloc(sizeof(int) * (n + 1));
 
     r->tag = ARRAY_TAG | (n << 3);
 
@@ -145,7 +145,7 @@ void* BcreateSexp(int bn, int* args) {
     __pre_gc();
 
     // args + tag + hash
-    r = (sexp*)malloc(sizeof(int) * (n + 2));
+    r = (sexp*)alloc(sizeof(int) * (n + 2));
     d = &(r->contents);
     r->tag = 0;
 
@@ -171,7 +171,7 @@ void* BcreateClosure(int bn, void* entry, int* args) {
 
     __pre_gc();
 
-    r = (data*)malloc(sizeof(int) * (n + 2));
+    r = (data*)alloc(sizeof(int) * (n + 2));
 
     r->tag = CLOSURE_TAG | ((n + 1) << 3);
     ((void**)r->contents)[0] = entry;
@@ -359,8 +359,13 @@ int stack_isEmpty() {
 }
 
 void stack_push(int v) {
+    if (top >= STACK_CAPACITY) {
+        printf("Out of memory error");
+        exit(1);
+    }
+
     buffer[++top] = v;
-    __gc_stack_top = buffer[top];
+    __gc_stack_top = &buffer[top];
 }
 
 int stack_pop() {
@@ -372,7 +377,7 @@ int stack_pop() {
         return INT_MIN;
     }
 
-    __gc_stack_top = buffer[top - 1];
+    __gc_stack_top = &buffer[top - 1];
     return buffer[top--];
 }
 
@@ -400,7 +405,6 @@ void eval(FILE* f, bytefile* bf) {
     curFunction->callerFunction = NULL;
     int lastCall = CALL;
 
-    // stack_create();
 
     char* ip = bf->code_ptr;
     char* ops[] = { "+", "-", "*", "/", "%", "<", "<=", ">", ">=", "==", "!=", "&&", "!!" };
