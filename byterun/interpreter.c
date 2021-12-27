@@ -30,13 +30,26 @@
 # define Global  0
 # define Local   1
 # define Arg     2
+# define Access  3
 
 # define CJMPz   0
 # define CJMPnz  1
 # define BEGIN   2
+# define CBEGIN  3
+# define CLOSURE 4
+# define CALLC   5
 # define CALL    6
 # define TAG     7
 # define ARRAY   8
+
+# define PATT         6
+# define PATT_STR     0
+# define PATT_STR_TAG 1
+# define PATT_ARRAY   2
+# define PATT_SEXP    3
+# define PATT_BOX     4
+# define PATT_UNBOX   5
+# define PATT_FUN     6
 
 # define LINE    10
 
@@ -51,6 +64,9 @@
 # define STRING_TAG  0x00000001
 # define ARRAY_TAG   0x00000003
 # define SEXP_TAG    0x00000005
+# define CLOSURE_TAG 0x00000007
+
+# define TO_DATA(x) ((data*)((char*)(x)-sizeof(int)))
 
 # define UNBOXED(x)  (((int) (x)) &  0x0001)
 # define UNBOX(x)    (((int) (x)) >> 1)
@@ -115,6 +131,26 @@ void* BcreateSexp(int bn, int* args) {
     return d->contents;
 }
 
+void* BcreateClosure(int bn, void* entry, int* args) {
+    int     i, ai;
+    data* r;
+    int     n = UNBOX(bn);
+
+    r = (data*)malloc(sizeof(int) * (n + 2));
+
+    r->tag = CLOSURE_TAG | ((n + 1) << 3);
+    ((void**)r->contents)[0] = entry;
+
+    // TAG | ENTRY + ARGS
+
+    for (i = 0; i < n; i++) {
+        ai = args[i];
+        ((int*)r->contents)[i + 1] = ai;
+    }
+
+    return r->contents;
+}
+
 
 /* The unpacked representation of bytecode file */
 typedef struct {
@@ -131,6 +167,7 @@ typedef struct {
 typedef struct State {
     int* args;
     int* locals;
+    int* access;
 } State_t;
 
 typedef struct Function {
@@ -142,6 +179,7 @@ typedef struct Function {
 void freeFunction(Function_t* f) {
     free(f->state->args);
     free(f->state->locals);
+    free(f->state->access);
     free(f->state);
     free(f);
 }
@@ -183,6 +221,13 @@ int* lookup(bytefile* f, State_t* state, int l, int i) {
         return &state->args[i];
     }
 
+    case Access: {
+#ifdef DEBUG
+        printf("C(%d)", i);
+#endif
+        return &state->access[i];
+    }
+
     default:
         printf("ERROR lookup: unsupported type\n");
         break;
@@ -213,6 +258,14 @@ void assign(bytefile* f, State_t* state, int l, int i, int x) {
         printf("A(%d)", i);
 #endif
         state->args[i] = x;
+        break;
+    }
+
+    case Access: {
+#ifdef DEBUG
+        printf("C(%d)", i);
+#endif  
+        state->access[i] = x;
         break;
     }
 
@@ -284,7 +337,7 @@ int stack_pop(Stack_t* stack) {
     if (stack_isEmpty(stack)) {
 
 # ifdef DEBUG
-        printf("ERROR: stack is empty");
+        printf(" ERROR: stack is empty");
 # endif
         return INT_MIN;
     }
@@ -294,7 +347,7 @@ int stack_pop(Stack_t* stack) {
 int stack_top(Stack_t* stack) {
     if (stack_isEmpty(stack)) {
 #ifdef DEBUG
-        printf("ERROR: stack is empty");
+        printf(" ERROR: stack is empty");
 #endif
         return INT_MIN;
     }
@@ -306,11 +359,14 @@ void eval(FILE* f, bytefile* bf) {
 # define INT    (ip += sizeof (int), *(int*)(ip - sizeof (int)))
 # define BYTE   *ip++
 # define STRING get_string (bf, INT)
-# define FAIL   failure ("ERROR: invalid opcode %d-%d\n", h, l)
+# define FAIL   failure (" ERROR: invalid opcode %d-%d\n", h, l)
 
     // main-function
     Function_t* curFunction = (Function_t*)malloc(sizeof(Function_t));
     curFunction->callerFunction = NULL;
+    int lastCall = CALL;
+    // int* curClosure;
+    int nClosure = 0;
 
     Stack_t* stack = stack_create();
 
@@ -504,7 +560,6 @@ void eval(FILE* f, bytefile* bf) {
 #endif
                 int index = stack_pop(stack);
                 int s = stack_pop(stack);
-
                 int elem = Belem(s, index);
                 stack_push(stack, elem);
                 break;
@@ -530,6 +585,9 @@ void eval(FILE* f, bytefile* bf) {
         }
 
         case LDA: {
+#ifdef DEBUG:
+            fprintf(f, "%s\t", "LDA");
+#endif
             int index = INT;
             int value = lookup(bf, curFunction->state, l, index);
 #ifdef DEBUG
@@ -585,16 +643,110 @@ void eval(FILE* f, bytefile* bf) {
                 fprintf(f, "BEGIN\t%d ", nargs);
                 fprintf(f, "%d", nlocals);
 #endif
-                curFunction->state = (State_t*)malloc(sizeof(State_t));
-                curFunction->state->args = (int*)malloc(nargs * sizeof(int));
-                curFunction->state->locals = (int*)malloc(nlocals * sizeof(int));
 
-                // not a `main`-function
-                if (curFunction->callerFunction != NULL) {
-                    for (int i = nargs - 1; i >= 0; i--) {
-                        curFunction->state->args[i] = stack_pop(stack);
+                if (lastCall != CALLC) {
+                    curFunction->state = (State_t*)malloc(sizeof(State_t));
+                    curFunction->state->access = (int*)malloc(0);
+                    curFunction->state->args = (int*)malloc(nargs * sizeof(int));
+                    // not a `main`-function
+                    if (curFunction->callerFunction != NULL) {
+                        for (int i = nargs - 1; i >= 0; i--) {
+                            curFunction->state->args[i] = stack_pop(stack);
+                        }
                     }
                 }
+
+                curFunction->state->locals = (int*)malloc(nlocals * sizeof(int));
+
+                break;
+            }
+
+            case CBEGIN: {
+                int nargs = INT;
+                int nlocals = INT;
+#ifdef DEBUG
+                fprintf(f, "CBEGIN\t%d %d", nargs, nlocals);
+#endif
+
+                // curFunction->state = (State_t*)malloc(sizeof(State_t));
+            // curFunction->state->args = (int*)malloc(nargs * sizeof(int));
+                curFunction->state->locals = (int*)malloc(nlocals * sizeof(int));
+                // curFunction->state->access = (int*)malloc(nClosure * sizeof(int));
+
+            // for (int i = 0; i < nClosure; i++) {
+            //     curFunction->state->access[i] = curClosure[i];
+            // }
+
+            // for (int i = nargs - 1; i >= 0; i--) {
+            //     curFunction->state->args[i] = stack_pop(stack);
+            // }
+
+
+                break;
+            }
+
+            case CLOSURE: {
+                int address = INT;
+                int nargs = INT;
+#ifdef DEBUG
+                fprintf(f, "CLOSURE\t0x%.8x | %d ", address, nargs);
+#endif
+                int* args = (int*)malloc(nargs * sizeof(int));
+                for (int i = 0; i < nargs; i++) {
+                    int t = BYTE;
+                    int index = INT;
+                    args[i] = *lookup(bf, curFunction->state, t, index);
+                }
+
+                stack_push(stack, BcreateClosure(BOX(nargs), (void*)address, args));
+                nClosure = nargs;
+                break;
+            }
+
+            case CALLC: {
+                int nargs = INT;
+#ifdef DEBUG
+                fprintf(f, "CALLC %d", nargs);
+#endif
+
+                int* args = (int*)malloc(nargs * sizeof(int));
+                for (int i = nargs - 1; i >= 0; i--) {
+                    args[i] = stack_pop(stack);
+                }
+
+                data* closure = TO_DATA(stack_pop(stack));
+                int label = *(int*)closure->contents;
+                // printf(" nClosure my: %d", sizeof(closure->contents));
+                // int nClosure = stack_pop(stack);
+
+                // fprintf(f, " nClosure: %d\n", nClosure);
+
+                // for (int i = 0; i < nargs; i++) {
+                //     stack_push(stack, args[i]);
+                // }
+
+                int* cnts = (int*)(closure->contents + sizeof(int));
+
+                Function_t* newFunction = (Function_t*)malloc(sizeof(Function_t));
+                newFunction->callerFunction = curFunction;
+                newFunction->state = (State_t*)malloc(sizeof(State_t));
+                newFunction->state->access = (int*)malloc(nClosure * sizeof(int));
+                newFunction->state->args = (int*)malloc(nargs * sizeof(int));
+
+                for (int i = 0; i < nClosure; i++) {
+                    // fprintf(f, "\n C[%d] = %d", i, UNBOX(cnts[i]));
+                    newFunction->state->access[i] = cnts[i];
+                }
+
+                for (int i = 0; i < nargs; i++) {
+                    // fprintf(f, "\n A[%d] = %d", i, UNBOX(args[i]));
+                    newFunction->state->args[i] = args[i];
+                }
+
+                curFunction->ip = ip;
+                curFunction = newFunction;
+                ip = (char*)(bf->code_ptr + label);
+                lastCall = CALLC;
 
                 break;
             }
@@ -612,6 +764,7 @@ void eval(FILE* f, bytefile* bf) {
                 newFunction->callerFunction = curFunction;
                 curFunction = newFunction;
                 ip = (char*)(bf->code_ptr + funLabel);
+                lastCall = CALL;
 
                 break;
             }
@@ -654,6 +807,59 @@ void eval(FILE* f, bytefile* bf) {
             break;
         }
 
+        case PATT: {
+#ifdef DEBUG
+            fprintf(f, "PATT\t%s", pats[l]);
+#endif
+
+            switch (l) {
+            case PATT_STR: {
+                void* x = (void*)stack_pop(stack);
+                void* y = (void*)stack_pop(stack);
+                stack_push(stack, Bstring_patt(x, y));
+                break;
+            }
+
+            case PATT_STR_TAG: {
+                void* x = (void*)stack_pop(stack);
+                stack_push(stack, Bstring_tag_patt(x));
+                break;
+            }
+
+            case PATT_ARRAY: {
+                void* x = (void*)stack_pop(stack);
+                stack_push(stack, Barray_tag_patt(x));
+                break;
+            }
+
+            case PATT_SEXP: {
+                void* x = (void*)stack_pop(stack);
+                stack_push(stack, Bsexp_tag_patt(x));
+                break;
+            }
+
+            case PATT_BOX: {
+                void* x = (void*)stack_pop(stack);
+                stack_push(stack, Bboxed_patt(x));
+                break;
+            }
+
+            case PATT_UNBOX: {
+                void* x = (void*)stack_pop(stack);
+                stack_push(stack, Bunboxed_patt(x));
+                break;
+            }
+
+            case PATT_FUN: {
+                void* x = (void*)stack_pop(stack);
+                stack_push(stack, Bclosure_tag_patt(x));
+                break;
+            }
+            }
+
+            break;
+        }
+
         case BUILTIN: {
             switch (l) {
             case LREAD: {
@@ -670,7 +876,7 @@ void eval(FILE* f, bytefile* bf) {
                 fprintf(f, "CALL\tLwrite\n");
 #endif
                 int value = stack_pop(stack);
-                Lwrite(value);
+                stack_push(stack, Lwrite(value));
                 break;
             }
 
