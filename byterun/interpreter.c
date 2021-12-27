@@ -216,7 +216,6 @@ typedef struct Function {
 void freeFunction(Function_t* f) {
     free(f->state->args);
     free(f->state->locals);
-    // free(f->state->access);
     free(f->state);
     free(f);
 }
@@ -553,6 +552,7 @@ void eval(FILE* f, bytefile* bf) {
                 args[nargs] = hash;
                 int sexp = BcreateSexp(BOX(nargs), args);
                 stack_push(sexp);
+                free(args);
 
                 break;
             }
@@ -564,9 +564,7 @@ void eval(FILE* f, bytefile* bf) {
                 int v = stack_pop();
                 int index = stack_pop();
                 int x = stack_pop();
-
                 int vv = Bsta(v, index, x);
-
                 stack_push(vv);
 
                 break;
@@ -706,7 +704,7 @@ void eval(FILE* f, bytefile* bf) {
 
                 if (lastCall != CALLC) {
                     curFunction->state = (State_t*)malloc(sizeof(State_t));
-                    curFunction->state->access = (int*)malloc(0);
+                    curFunction->state->access = NULL;
                     curFunction->state->args = (int*)malloc(nargs * sizeof(int));
                     // not a `main`-function
                     if (curFunction->callerFunction != NULL) {
@@ -745,6 +743,7 @@ void eval(FILE* f, bytefile* bf) {
                 }
 
                 stack_push(BcreateClosure(BOX(nargs), (void*)address, args));
+                free(args);
                 break;
             }
 
@@ -771,6 +770,8 @@ void eval(FILE* f, bytefile* bf) {
                 for (int i = 0; i < nargs; i++) {
                     newFunction->state->args[i] = args[i];
                 }
+
+                free(args);
 
                 curFunction->ip = ip;
                 curFunction = newFunction;
@@ -939,6 +940,7 @@ void eval(FILE* f, bytefile* bf) {
                 }
                 int arr = BcreateArray(BOX(n), args);
                 stack_push(arr);
+                free(args);
                 break;
             }
 
@@ -957,6 +959,7 @@ void eval(FILE* f, bytefile* bf) {
     } while (1);
 stop:
 #ifdef DEBUG
+    free(curFunction);
     fprintf(f, "<end>\n");
 #endif
     return;
